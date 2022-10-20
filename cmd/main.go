@@ -12,6 +12,9 @@ import (
 	"github.com/cryptix/wav"
 )
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
 func main() {
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -71,11 +74,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := vad.SetMode(2); err != nil {
+	if err := vad.SetMode(3); err != nil {
 		log.Fatal(err)
 	}
 
-	checkFrameNums := rate / 1000 * 20
+	checkFrameNums := rate / 1000 * 10
 	frame := make([]byte, checkFrameNums)
 
 	if ok := vad.ValidRateAndFrameLength(rate, checkFrameNums); !ok {
@@ -93,11 +96,11 @@ func main() {
 	for {
 		_, err := io.ReadFull(reader, frame)
 		if err == io.EOF {
-			log.Printf("eof\n")
+			// log.Printf("eof\n")
 			break
 		}
 		if err == io.ErrUnexpectedEOF {
-			log.Printf("unexpected eof")
+			// log.Printf("unexpected eof")
 			break
 		}
 		// if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -112,11 +115,16 @@ func main() {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("active:%v\n", frameActive)
-
 		if isActive != frameActive || offset == 0 {
+			ms := time.Duration(int((float64(offset)/float64(rate))*1000000/2)/1000) * time.Millisecond
+			// t := time.Duration(offset) * time.Second / time.Duration(rate) / 2
+			if !isActive && frameActive {
+				fmt.Printf("[%v-", ms)
+			} else if isActive && !frameActive {
+				fmt.Printf("%v]是人声\n", ms)
+			}
 			isActive = frameActive
-			report()
+			// report()
 		}
 
 		offset += len(frame)
