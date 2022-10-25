@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 
 	webrtcvad "audio-denoise"
 	"github.com/cryptix/wav"
@@ -15,6 +14,78 @@ import (
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
+
+func vad(wavInfo *wav.File, samples []byte, totalDuraMs float64) {
+	vad, err := webrtcvad.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := vad.SetMode(1); err != nil {
+		log.Fatal(err)
+	}
+
+	// checkFrameNums := rate / 1000 * 20
+	// frame := make([]byte, checkFrameNums)
+	//
+	// if ok := vad.ValidRateAndFrameLength(rate, checkFrameNums); !ok {
+	// 	log.Fatal("invalid rate or frame length")
+	// }
+
+	rate := int(wavInfo.SampleRate)
+	sectionMs := 30
+	samplesNum := rate / 1000 * sectionMs
+	sectionNum := int(float64(wavInfo.NumberOfSamples) / float64(samplesNum))
+
+	isActive := false
+	for i := 0; i < sectionNum; i++ {
+		realStart := i * samplesNum * 2
+		realEnd := realStart + samplesNum*2
+		frameActive, err := vad.Process(rate, samples[realStart:realEnd])
+		if err != nil {
+			log.Fatal(err)
+		}
+		// fmt.Printf("[%v-%v] %v\n", realStart/2, realEnd/2, frameActive)
+
+		if isActive != frameActive || i == 0 {
+			startMs := int(float64(realStart/2) / float64(wavInfo.NumberOfSamples) * float64(totalDuraMs))
+			// endMs := float64(realEnd/2) / float64(wavInfo.NumberOfSamples) * float64(totalDuraMs)
+			// ms := time.Duration(int((float64(realStart/2)/float64(rate))*1000000/2)/1000) * time.Millisecond
+			// t := time.Duration(offset) * time.Second / time.Duration(rate) / 2
+			if !isActive && frameActive {
+				fmt.Printf("[%vms-", startMs)
+			} else if isActive && !frameActive {
+				fmt.Printf("%vms]是人声\n", startMs)
+			}
+			isActive = frameActive
+			// report()
+		}
+	}
+}
+
+func ans(wavInfo *wav.File, samples []byte, totalDuraMs float64) {
+	ans, err := webrtcvad.NewAns(int(wavInfo.SampleRate))
+	if err != nil {
+		panic(err)
+	}
+	ans.SetMode(3)
+
+	rate := int(wavInfo.SampleRate)
+	sectionMs := 10
+	samplesNum := rate / 1000 * sectionMs
+	sectionNum := int(float64(wavInfo.NumberOfSamples) / float64(samplesNum))
+
+	for i := 0; i < sectionNum; i++ {
+		realStart := i * samplesNum * 2
+		realEnd := realStart + samplesNum*2
+		_, err := ans.Process(rate, samples[realStart:realEnd])
+		if err != nil {
+			log.Fatal(err)
+		}
+		// fmt.Printf("[%v-%v] %v\n", realStart/2, realEnd/2, frameActive)
+	}
+}
+
 func main() {
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -37,10 +108,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	reader, err := wavReader.GetDumbReader()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// reader, err := wavReader.GetDumbReader()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	wavInfo := wavReader.GetFile()
 	rate := int(wavInfo.SampleRate)
@@ -51,84 +122,33 @@ func main() {
 		// log.Fatalf("expected 32kHz file:%v", rate)
 	}
 
-	// samples := make([]int32, 0)
-	// framesNum := 0
-	// for {
-	// 	sample, err := wavReader.ReadSample()
-	// 	if err != nil {
-	// 		if err == io.EOF {
-	// 			break
-	// 		}
-	// 		log.Fatal(err)
-	// 	}
-	// 	framesNum++
-	// 	samples = append(samples, sample)
-	// }
-	//
-	// fmt.Printf("时长:%vms\n", wavInfo.Duration.Milliseconds())
-	// fmt.Printf("帧率:%v\n", wavInfo.SampleRate)
-	// fmt.Printf("帧数:%v\n", len(samples))
+	fmt.Printf("采样数量:%v\n", wavInfo.NumberOfSamples)
 
-	vad, err := webrtcvad.New()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := vad.SetMode(3); err != nil {
-		log.Fatal(err)
-	}
-
-	checkFrameNums := rate / 1000 * 10
-	frame := make([]byte, checkFrameNums)
-
-	if ok := vad.ValidRateAndFrameLength(rate, checkFrameNums); !ok {
-		log.Fatal("invalid rate or frame length")
-	}
-
-	var isActive bool
-	var offset int
-
-	report := func() {
-		t := time.Duration(offset) * time.Second / time.Duration(rate) / 2
-		fmt.Printf("isActive = %v, t = %v\n", isActive, t)
-	}
-
+	samples := make([]byte, 0)
+	framesNum := 0
 	for {
-		_, err := io.ReadFull(reader, frame)
-		if err == io.EOF {
-			// log.Printf("eof\n")
-			break
-		}
-		if err == io.ErrUnexpectedEOF {
-			// log.Printf("unexpected eof")
-			break
-		}
-		// if err == io.EOF || err == io.ErrUnexpectedEOF {
-		// 	break
-		// }
+		sample, err := wavReader.ReadRawSample()
 		if err != nil {
-			log.Fatal(err)
-		}
-
-		frameActive, err := vad.Process(rate, frame)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if isActive != frameActive || offset == 0 {
-			ms := time.Duration(int((float64(offset)/float64(rate))*1000000/2)/1000) * time.Millisecond
-			// t := time.Duration(offset) * time.Second / time.Duration(rate) / 2
-			if !isActive && frameActive {
-				fmt.Printf("[%v-", ms)
-			} else if isActive && !frameActive {
-				fmt.Printf("%v]是人声\n", ms)
+			if err == io.EOF {
+				break
 			}
-			isActive = frameActive
-			// report()
+			log.Fatal(err)
 		}
-
-		offset += len(frame)
+		framesNum++
+		samples = append(samples, sample...)
 	}
 
-	report()
+	fmt.Printf("时长:%vms\n", wavInfo.Duration.Milliseconds())
+	fmt.Printf("深度:%v\n", wavInfo.SignificantBits)
+	fmt.Printf("帧率:%v\n", wavInfo.SampleRate)
+	fmt.Printf("帧数:%v\n", len(samples)/int(wavInfo.SignificantBits))
+	fmt.Printf("通道:%v\n", wavInfo.Channels)
+	totalDuraMs := float64(wavInfo.NumberOfSamples) / float64(wavInfo.SampleRate/1000)
+	fmt.Printf("时长:%vms\n", totalDuraMs)
+	if wavInfo.Channels != 1 {
+		panic(wavInfo.Channels)
+	}
+
+	ans(&wavInfo, samples, totalDuraMs)
+	// vad(&wavInfo, samples, totalDuraMs)
 }

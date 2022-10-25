@@ -3,6 +3,11 @@
 #endif
 
 #include <memory.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
+
 //#include "cgo/webrtc/common_audio/signal_processing/levinson_durbin.c"
 //#include "cgo/webrtc/common_audio/signal_processing/lpc_to_refl_coef.c"
 #include "cgo/webrtc/common_audio/signal_processing/min_max_operations.c"
@@ -50,3 +55,10 @@
 //#include "cgo/webrtc/common_audio/vad/vad_unittest.cc"
 //#include "cgo/webrtc/common_audio/vad/vad_unittest.h"
 #include "cgo/webrtc/common_audio/vad/webrtc_vad.c"
+
+#include "cgo/ns/noise_suppression.h"
+#include "cgo/ns/noise_suppression.c"
+#include "cgo/ns/dr_mp3.h"
+#include "cgo/ns/dr_wav.h"
+#include "cgo/ns/timing.h"
+#include "cgo/ns/math.h"
